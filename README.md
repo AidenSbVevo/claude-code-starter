@@ -214,7 +214,10 @@ local marketplace, not as personal skills — see
 
 `epic-planning` → `ship-issue` → `cross-review` (described in the
 [Skill Library](#skill-library) above) implement a disciplined
-Linear-issue → PR flow built on three ideas:
+Linear-issue → PR flow built on three ideas. See
+[`docs/project-workflow.md`](docs/project-workflow.md) for how Linear projects,
+epics, and issues structure the work — and why we size each issue to one session
+and one PR.
 
 - **One writer.** Claude is the only writer; Codex reviews read-only — an
   independent failure distribution whose blind spots don't correlate with the
