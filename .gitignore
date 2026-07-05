@@ -1,0 +1,19 @@
+.DS_Store
+
+# macOS / iCloud sync conflict duplicates — never commit these, they're
+# auto-generated when iCloud detects two devices saving the same file.
+**/* 2.*
+**/* [0-9].*
+
+# Per-machine local permissions (the canonical settings.json is tracked).
+.claude/settings.local*.json
+
+# Per-skill node_modules (installed by the user via `npm install` in the skill dir).
+skills/*/node_modules/
+
+# Per-machine skill runtime config (a skill may write a device-specific path
+# here at first run). Any committed config.example.json is the template.
+skills/*/config.json
+
+# Editor / config backups
+*.bak-*

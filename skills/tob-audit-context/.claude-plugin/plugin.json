@@ -1,0 +1,5 @@
+{
+  "name": "audit-context",
+  "description": "Trail of Bits audit-context toolkit: line-by-line architectural context building for security audits (audit-context-building skill, function-analyzer agent, /audit-context command).",
+  "version": "1.0.0"
+}

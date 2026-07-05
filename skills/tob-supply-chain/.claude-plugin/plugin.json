@@ -1,0 +1,5 @@
+{
+  "name": "supply-chain",
+  "description": "Trail of Bits supply-chain risk auditing: dependency and third-party package risk analysis.",
+  "version": "1.0.0"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "insecure-defaults",
+  "description": "Trail of Bits insecure-defaults detection: find dangerous default configurations and settings.",
+  "version": "1.0.0"
+}

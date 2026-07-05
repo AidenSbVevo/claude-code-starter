@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ============================================================================
+# Claude Code Config Installer
+# Symlinks config files from this repo into ~/.claude/
+# Safe to re-run — backs up existing non-symlink files before replacing.
+# ============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+BACKUP_DIR="$CLAUDE_DIR/backups/$(date +%Y%m%d_%H%M%S)"
+
+echo "╔══════════════════════════════════════════════╗"
+echo "║   Claude Code Config Installer               ║"
+echo "╚══════════════════════════════════════════════╝"
+echo ""
+echo "Repo:   $SCRIPT_DIR"
+echo "Target: $CLAUDE_DIR"
+echo ""
+
+mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/skills"
+
+backup_if_exists() {
+    local target="$1"
+    if [ -e "$target" ] && [ ! -L "$target" ]; then
+        mkdir -p "$BACKUP_DIR"
+        echo "  ⚠ Backing up existing: $target → $BACKUP_DIR/"
+        cp -r "$target" "$BACKUP_DIR/"
+    fi
+}
+
+link_file() {
+    local source="$1" target="$2"
+    backup_if_exists "$target"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        rm -rf "$target"
+    fi
+    ln -sf "$source" "$target"
+    echo "  ✓ Linked: $target → $source"
+}
+
+# --- Prune dangling symlinks left by previously-installed, now-removed items ---
+prune_dangling() {
+    local dir="$1"
+    [ -d "$dir" ] || return 0
+    find "$dir" -maxdepth 1 -type l ! -exec test -e {} \; -exec sh -c '
+        for l; do echo "  ✂ Pruned dangling: $l"; rm -f "$l"; done
+    ' sh {} +
+}
+
+echo "📋 Installing settings.json..."
+link_file "$SCRIPT_DIR/settings.json" "$CLAUDE_DIR/settings.json"
+
+echo "📄 Installing global CLAUDE.md..."
+link_file "$SCRIPT_DIR/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+
+echo "🧠 Installing skills..."
+prune_dangling "$CLAUDE_DIR/skills"
+for skill_dir in "$SCRIPT_DIR/skills"/*/; do
+    [ -d "$skill_dir" ] || continue
+    # tob-* bundles are plugin-layout (skills nested one level deep) and are
+    # installed via the local plugin marketplace, not as personal skills.
+    case "$(basename "$skill_dir")" in tob-*) continue ;; esac
+    link_file "$skill_dir" "$CLAUDE_DIR/skills/$(basename "$skill_dir")"
+done
+
+echo "🪝 Installing hooks..."
+if compgen -G "$SCRIPT_DIR/hooks/*.sh" > /dev/null; then
+    mkdir -p "$CLAUDE_DIR/hooks"
+    prune_dangling "$CLAUDE_DIR/hooks"
+    for hook_file in "$SCRIPT_DIR/hooks"/*.sh; do
+        link_file "$hook_file" "$CLAUDE_DIR/hooks/$(basename "$hook_file")"
+    done
+fi
+
+# --- Agents (optional — only if the repo ships any) ---
+if compgen -G "$SCRIPT_DIR/agents/*.md" > /dev/null; then
+    echo "🤖 Installing agents..."
+    mkdir -p "$CLAUDE_DIR/agents"
+    prune_dangling "$CLAUDE_DIR/agents"
+    for agent_file in "$SCRIPT_DIR/agents"/*.md; do
+        link_file "$agent_file" "$CLAUDE_DIR/agents/$(basename "$agent_file")"
+    done
+fi
+
+# --- Per-machine settings (settings.local.json) --------------------------------
+# settings.json is the tracked, portable, canonical config. Two values can't live
+# there because they are machine-absolute and settings.json does NOT expand
+# $HOME/~ (env-var expansion is unsupported — anthropics/claude-code#4276):
+#   • the plugin-marketplace path — wherever THIS clone lives ($SCRIPT_DIR)
+#   • the home-dir access grant   — this machine's ~/.claude ($CLAUDE_DIR)
+# We write them here, deep-merging into any existing local settings so the
+# harness-managed permission allow-list is preserved. Idempotent on re-run.
+echo "🔧 Writing per-machine settings.local.json..."
+LOCAL_SETTINGS="$CLAUDE_DIR/settings.local.json"
+write_local_settings() {
+    if command -v jq > /dev/null 2>&1; then
+        local fragment tmp
+        fragment="$(jq -n --arg mp "$SCRIPT_DIR" --arg home "$CLAUDE_DIR" '{
+            permissions: { additionalDirectories: [$home] },
+            extraKnownMarketplaces: { "claude-code-config": { source: { source: "directory", path: $mp } } }
+        }')"
+        if [ -f "$LOCAL_SETTINGS" ]; then
+            tmp="$(mktemp)"
+            jq -s '.[0] * .[1]' "$LOCAL_SETTINGS" <(printf '%s' "$fragment") > "$tmp" && mv "$tmp" "$LOCAL_SETTINGS"
+        else
+            printf '%s\n' "$fragment" > "$LOCAL_SETTINGS"
+        fi
+        return 0
+    fi
+    if command -v python3 > /dev/null 2>&1; then
+        MP="$SCRIPT_DIR" HOME_DIR="$CLAUDE_DIR" LOCAL="$LOCAL_SETTINGS" python3 - <<'PY'
+import json, os
+local = os.environ["LOCAL"]
+frag = {
+    "permissions": {"additionalDirectories": [os.environ["HOME_DIR"]]},
+    "extraKnownMarketplaces": {
+        "claude-code-config": {"source": {"source": "directory", "path": os.environ["MP"]}}
+    },
+}
+data = {}
+if os.path.exists(local):
+    try:
+        with open(local) as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+def deep_merge(a, b):
+    for k, v in b.items():
+        if isinstance(v, dict) and isinstance(a.get(k), dict):
+            deep_merge(a[k], v)
+        else:
+            a[k] = v
+    return a
+deep_merge(data, frag)
+with open(local, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+        return 0
+    fi
+    echo "  ⚠ Neither jq nor python3 found — skipping settings.local.json." >&2
+    echo "    Add manually: extraKnownMarketplaces.claude-code-config.source.path = $SCRIPT_DIR" >&2
+    return 0
+}
+write_local_settings
+echo "  ✓ Wrote: $LOCAL_SETTINGS (marketplace path + home-dir access)"
+
+echo ""
+echo "════════════════════════════════════════════════"
+echo "✅ Installation complete!"
+echo ""
+echo "Installed:"
+echo "  • ~/.claude/settings.json"
+echo "  • ~/.claude/CLAUDE.md"
+echo ""
+echo "  Skills (auto-invoked by Claude based on context):"
+for skill_dir in "$SCRIPT_DIR/skills"/*/; do
+    [ -d "$skill_dir" ] || continue
+    case "$(basename "$skill_dir")" in tob-*) continue ;; esac
+    echo "  • $(basename "$skill_dir")"
+done
+echo ""
+echo "  Security-audit toolkit (tob-*) installs as plugins — see README."
+echo ""
+echo "Skills activate automatically when Claude detects a relevant task."
+echo "Quick reference:"
+echo "  • scope out <epic>            → epic-planning"
+echo "  • start <ISSUE-ID>            → ship-issue (gates at plan and ship)"
+echo "  • cross-review this diff      → cross-review (standalone second opinion)"
+echo ""
+echo "To verify: claude --debug  then ask 'What skills are available?'"
+echo "════════════════════════════════════════════════"

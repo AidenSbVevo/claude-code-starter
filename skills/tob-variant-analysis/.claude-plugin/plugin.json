@@ -1,0 +1,5 @@
+{
+  "name": "variant-analysis",
+  "description": "Trail of Bits variant analysis: find variants of known vulnerabilities across a codebase (/variants command).",
+  "version": "1.0.0"
+}

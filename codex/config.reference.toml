@@ -1,0 +1,27 @@
+# Reference Codex CLI config for the cross-review / ship-issue pipeline.
+#
+# This is a REFERENCE, not auto-installed: your real ~/.codex/config.toml also
+# holds machine-specific auth and per-project trust levels that shouldn't be
+# clobbered. On a new device:
+#   1. Merge the two keys below into ~/.codex/config.toml (leave your
+#      `[projects.*]` trust entries and `auth.json` alone).
+#   2. Copy review.config.toml (this directory) to ~/.codex/review.config.toml.
+#   3. Run `codex login`.
+#
+# Why: the pipeline uses Codex as a decorrelated, adversarial, READ-ONLY second
+# reviewer (see the cross-review skill). Codex never writes — that's the
+# "one-writer" rule. gpt-5.5 at xhigh reasoning gives the strongest independent
+# review signal.
+#
+# NOTE ON PROFILES: current Codex versions use a per-profile FILE
+# (`~/.codex/<name>.config.toml`), not a legacy `[profiles.<name>]` table inside
+# config.toml — the table form is rejected at load time. So the `review` profile
+# lives in the sibling review.config.toml, and this file holds only globals.
+
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+
+# The pipeline's read-only reviewer profile lives in ~/.codex/review.config.toml.
+# Invoke with:  codex exec --profile review ...
+# cross-review also passes `--sandbox read-only` explicitly, so it stays safe
+# even on a device where the profile isn't installed.

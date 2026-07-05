@@ -1,0 +1,5 @@
+{
+  "name": "differential-review",
+  "description": "Trail of Bits differential review: security-focused review of recent changes/diffs (differential-review skill, /diff-review command).",
+  "version": "1.0.0"
+}

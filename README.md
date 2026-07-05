@@ -1,0 +1,296 @@
+# Claude Code Config Starter
+
+Portable [Claude Code](https://claude.com/claude-code) configuration: global
+context, a curated skill library, and a Codex-backed development pipeline. Clone
+this repo on any machine, run `install.sh`, and Claude Code is ready with the
+full setup.
+
+This is a **starter** — fork it, make it yours. The one thing to customize
+before you start is the "About the User" block in [`CLAUDE.md`](CLAUDE.md)
+(a one-paragraph profile of you); everything else works out of the box.
+
+**Contents:** [Quick Start](#quick-start) ·
+[New Machine Setup](#new-machine-setup) ·
+[What's Included](#whats-included) ·
+[Skill Library](#skill-library) ·
+[The Dev Pipeline](#the-dev-pipeline) ·
+[How It Works](#how-it-works) ·
+[Customization](#customization)
+
+## Quick Start
+
+```bash
+git clone https://github.com/AidenSbVevo/claude-code-starter.git ~/.claude-code-starter
+cd ~/.claude-code-starter
+./install.sh          # creates symlinks into ~/.claude/
+claude                # launch — everything is loaded
+```
+
+## New Machine Setup
+
+```bash
+# 1. Claude Code (requires Node.js 18+)
+npm install -g @anthropic-ai/claude-code
+
+# 2. Codex CLI — powers the cross-review / ship-issue pipeline
+#    (install per OpenAI's instructions, then authenticate)
+codex login
+
+# 3. Clone and install this config
+git clone https://github.com/AidenSbVevo/claude-code-starter.git ~/.claude-code-starter
+cd ~/.claude-code-starter && ./install.sh
+```
+
+The pipeline **degrades gracefully** without Codex — cross-review self-skips and
+says so — so step 2 is optional if you don't use the Linear-driven flow.
+
+## What's Included
+
+### `settings.json` — permissions, hooks, plugins
+Full tool permissions (Bash/Read/Write/Edit/Glob/Grep/WebFetch/WebSearch/Task),
+the MCP allow-list this config relies on (Linear, Google Drive), `xhigh` effort,
+and the SessionStart/guardrail hooks below. It is **fully portable** — no
+machine-absolute paths, so the same tracked file works on every machine.
+
+The two values that *must* differ per machine — the plugin-marketplace path (the
+location of this clone) and the `~/.claude` access grant — are written by
+`install.sh` into `~/.claude/settings.local.json`, deep-merged so it never
+clobbers existing local overrides. They live there rather than in `settings.json`
+because `settings.json` does not expand `$HOME`/`~`
+([anthropics/claude-code#4276](https://github.com/anthropics/claude-code/issues/4276)).
+Add any further machine-local overrides to that same (gitignored) file.
+
+### `hooks/` — deterministic guardrails
+Four small, safe-by-default hook scripts (symlinked to `~/.claude/hooks/`):
+
+- **`attribution-veto.sh`** (PreToolUse: Bash) — the only blocking hook: denies
+  `git commit` / `gh pr create` whose text carries AI attribution
+  (Co-Authored-By, "Generated with", 🤖). Enforces the no-attribution rule
+  deterministically.
+- **`scratch-guard.sh`** (PreToolUse: Bash) — warns (never blocks) when a
+  `git add` would stage `.plans/` or `.review/`; keeps both in
+  `.git/info/exclude`.
+- **`format-fast-check.sh`** (PostToolUse: Edit/Write) — runs the repo's own
+  formatter (ruff/black/prettier/rustfmt/gofmt) on the edited file only, plus a
+  fast lint; warn-only, never blocks, never imposes a formatter the repo
+  doesn't configure.
+- **`session-context.sh`** (SessionStart) — injects branch, behind-count vs
+  freshly-fetched `origin/main` (fetch capped at ~5s), and dirty-file count —
+  the fresh-base signal ship-issue checks in Phase 0.
+
+Every script exits 0 on any error, missing tool, or unexpected input — except
+the attribution veto, whose entire point is the block.
+
+### `CLAUDE.md` — global context
+Loaded into every session: working environment, code standards, interaction
+preferences, and the **dev-pipeline conventions** block (one-writer rule, hard
+gates, fresh-base, no AI attribution, `uv` for Python, scratch dirs).
+
+## Skill Library
+
+Skills are ambient knowledge — each ships a `SKILL.md` whose description Claude
+matches against your request. Say something that sounds like the trigger and
+the skill activates on its own; you can also name one explicitly ("use the viz
+skill"). Each entry below: what the skill does, then *phrases that trigger it*.
+
+### Dev pipeline
+
+The disciplined Linear-issue → PR flow — design and Codex setup in
+[The Dev Pipeline](#the-dev-pipeline) below.
+
+- **`epic-planning`** — turns a goal, epic, or feature area into one-PR-sized
+  Linear issues, each with acceptance criteria and verification commands;
+  files them only after explicit approval.
+  *"scope out the auth epic"*, *"break this into tickets"*
+- **`ship-issue`** — drives a Linear issue end-to-end to a shipped PR:
+  plan + decorrelated review, hard **plan gate**, TDD implementation, diff
+  review, hard **ship gate**, PR, Linear update, mandatory retro. Prefer it
+  over ad-hoc implementation whenever a Linear issue ID is the starting point.
+  *"start ABC-123"*, *"take ABC-42 to a PR"*
+- **`cross-review`** — decorrelated second opinion from local Codex (read-only
+  `codex exec`) on a plan or a diff; findings triaged FIX / REBUT / ESCALATE
+  with one bounded verification pass. Invoked automatically at ship-issue's
+  checkpoints, or standalone.
+  *"cross-review this diff"*, *"get a second opinion"*, *"ask codex"*
+
+### Engineering
+
+- **`ml-engineer`** — ML/AI systems end to end: training and fine-tuning
+  pipelines, LLMs (LoRA/QLoRA, RLHF/DPO, quantization, vLLM), agentic
+  workflows, RAG, evaluation/benchmarking, experiment tracking, model serving,
+  PyTorch/JAX/TensorFlow.
+  *"debug this training loop"*, *"add LoRA fine-tuning"*, *"build a RAG eval"*
+- **`software-dev`** — senior-engineer project mechanics: scaffolding new
+  projects, `uv`/conda environments, Dockerfiles, CI/CD pipelines, testing,
+  packaging and publishing, CLIs and APIs, pre-commit hooks, productionizing
+  prototype code.
+  *"set up CI for this repo"*, *"package this as a library"*
+- **`frontend-engineer`** — React/Next.js/TypeScript apps, dashboards and
+  admin panels, interactive data viz (D3, Plotly, Recharts, deck.gl,
+  Three.js), Python dashboards (Dash, Streamlit, Gradio), state management,
+  real-time UIs, Tailwind, Vitest/Playwright testing.
+  *"build an admin panel for this API"*, *"the websocket UI drops updates"*
+- **`ui-designer`** — how a UI should look and feel: layouts, component
+  libraries, visual hierarchy, color systems and theming, typography, design
+  tokens, dark/light mode, accessibility, wireframes, design critique.
+  *"critique this dashboard's layout"*, *"design tokens for our brand"*
+- **`viz`** — production-quality charts and figures: choosing the right chart
+  type, matplotlib/seaborn/plotly/Altair and R/ggplot2, multi-panel figures,
+  colorblind-safe palettes, ML-evaluation plots (ROC/PR, confusion matrix,
+  calibration).
+  *"make this figure publication-ready"*, *"which chart type for this data?"*
+
+### Delivery
+
+- **`linear-issues`** — creates, updates, comments on, and closes Linear
+  issues in a consistent house style (TL;DR/Resolution header, type-specific
+  bug/feature/research/infra sections), drafting from git/PR context and
+  filing via the Linear MCP after approval.
+  *"file a bug for this"*, *"write the resolution for ENG-142"*
+- **`handoff`** — ends a long session cleanly instead of relying on
+  auto-compaction: writes a curated `HANDOFF.md` at the repo root (reading
+  order, git state, decisions made, things to avoid, next concrete action) so
+  a fresh session can pick up at full speed.
+  *"/handoff"*, *"context is filling — let's start fresh"*
+
+### Security review
+
+`security-audit` is the orchestrator; the `tob-*` bundles are a
+Trail-of-Bits-style audit toolkit. The bundles are plugin-layout (nested
+`skills/`, `agents/`, `commands/`), so they install as **plugins** via the
+local marketplace, not as personal skills — see
+**Plugins on a new machine** under [File Structure](#file-structure).
+
+- **`security-audit`** — multi-phase audit orchestrator for whole codebases:
+  static analysis, supply-chain audit, insecure defaults, sharp edges, variant
+  and differential analysis — ending in a severity-ranked markdown report.
+  *"run a security audit"*, *"check this project for vulnerabilities"*
+- **`tob-static-analysis`** *(plugin)* — Semgrep scans with parallel
+  per-language workers, CodeQL interprocedural data-flow and taint tracking,
+  and SARIF parsing/dedup for either.
+  *"run semgrep"*, *"scan with codeql"*, *"parse these scan results"*
+- **`tob-audit-context`** *(plugin)* — ultra-granular, line-by-line context
+  building before bug hunting (includes a per-function analyzer agent), so
+  findings rest on real architectural understanding.
+  *"build audit context for this codebase"*
+- **`tob-differential-review`** *(plugin)* — security-focused review of a
+  specific change (PR, commit, diff): blast radius, git-history context, test
+  coverage, security-regression detection.
+  *"security-review this PR"*, *"/diff-review"*
+- **`tob-variant-analysis`** *(plugin)* — after one bug is found, hunts its
+  siblings across the codebase with pattern-based analysis and generated
+  CodeQL/Semgrep queries.
+  *"find variants of this vulnerability"*
+- **`tob-supply-chain`** *(plugin)* — flags dependencies at heightened risk of
+  exploitation or takeover; scopes supply-chain attack surface.
+  *"audit our dependencies"*
+- **`tob-insecure-defaults`** *(plugin)* — detects fail-open defaults that let
+  an app run insecurely in production: hardcoded secrets, weak auth,
+  permissive security config.
+  *"check for insecure defaults"*
+- **`tob-sharp-edges`** *(plugin)* — identifies error-prone APIs, dangerous
+  configurations, and footgun designs; evaluates code against
+  secure-by-default principles.
+  *"where are the footguns in this API?"*
+
+### Authoring & platform
+
+- **`skill-creator`** — create, improve, and eval-test skills; ships
+  eval-runner, grader, benchmark, viewer, and description-optimizer scripts.
+  *"create a skill for X"*, *"optimize this skill's description"*
+- **`mcp-builder`** — build high-quality MCP servers in Python (FastMCP) or
+  TypeScript (MCP SDK), with tool-design best practices, transport guidance,
+  and a runnable eval harness.
+  *"expose this API as MCP tools"*
+- **`claude-api`** — build apps on the Claude API, Anthropic SDKs, or Agent
+  SDK (not for other AI SDKs or general ML work).
+  *"add tool use to this anthropic client"*
+- **`pdf`** — anything PDF: extract text/tables/images, merge, split, rotate,
+  watermark, fill forms, encrypt/decrypt, OCR scanned documents, create new
+  PDFs.
+  *"fill this PDF form"*, *"merge these reports into one PDF"*
+
+## The Dev Pipeline
+
+`epic-planning` → `ship-issue` → `cross-review` (described in the
+[Skill Library](#skill-library) above) implement a disciplined
+Linear-issue → PR flow built on three ideas:
+
+- **One writer.** Claude is the only writer; Codex reviews read-only — an
+  independent failure distribution whose blind spots don't correlate with the
+  implementer's.
+- **Gates are real stops.** ship-issue's **plan gate** and **ship gate** wait
+  for explicit human approval — never a banner walked past in the same turn.
+- **Verifiers vs. critics.** Iterate unboundedly against verifiers (tests,
+  types, lint — loop to green) but boundedly against critics (model reviews:
+  1 discovery + 1 verification pass, 1 exchange per contested finding);
+  surviving disagreements escalate to the human at a gate. A mandatory retro
+  turns recurring findings into config diffs.
+
+**Codex setup:** the recommended Codex configuration lives in the
+[`codex/`](codex/) directory — `config.reference.toml` (global model/reasoning
+to merge into `~/.codex/config.toml`) and `review.config.toml` (the read-only,
+no-approvals, max-reasoning `review` profile — copy to
+`~/.codex/review.config.toml`). The profile enforces the one-writer rule at the
+config layer; invoke it with `codex exec --profile review`.
+
+## How It Works
+
+`install.sh` creates **symlinks** from `~/.claude/` into this repo:
+
+- Edits to skills in the repo are reflected immediately — no re-install needed.
+- `git pull` on any machine updates everything.
+- `install.sh` prunes dangling symlinks and backs up any real files it replaces.
+- `uninstall.sh` removes only the symlinks, leaving backups intact.
+
+## File Structure
+
+```
+claude-code-starter/
+├── install.sh              # symlinks everything into ~/.claude/
+├── uninstall.sh            # removes the symlinks
+├── settings.json           # permissions, hooks, plugins (portable; no abs paths)
+├── CLAUDE.md               # global session context + pipeline conventions
+├── hooks/                  # deterministic guardrails (see above)
+├── .claude-plugin/
+│   └── marketplace.json    # local marketplace serving the tob-* plugins
+├── codex/
+│   └── config.reference.toml   # recommended Codex CLI setup for the pipeline
+└── skills/                 # ambient knowledge (auto-invoked)
+    ├── epic-planning/ ship-issue/ cross-review/
+    ├── ml-engineer/ software-dev/ frontend-engineer/ ui-designer/ viz/
+    ├── linear-issues/ handoff/
+    ├── security-audit/ tob-*/          # tob-* install as plugins, not skills
+    └── skill-creator/ mcp-builder/ claude-api/ pdf/
+```
+
+**Plugins on a new machine:** `install.sh` covers skills, hooks, settings, **and
+the marketplace registration** — it writes this clone's path into
+`~/.claude/settings.local.json`, so there's no `claude plugin marketplace add`
+step and nothing is machine-absolute in the tracked config. The tob-* security
+plugins still need a one-time install:
+
+```bash
+for p in audit-context differential-review insecure-defaults sharp-edges \
+         static-analysis supply-chain variant-analysis; do
+  claude plugin install "$p@claude-code-config"
+done
+```
+
+## Customization
+
+**Add a skill:**
+```bash
+mkdir skills/my-skill
+$EDITOR skills/my-skill/SKILL.md   # frontmatter: name + description
+./install.sh                        # re-run to symlink it
+```
+
+**Project-specific overrides:** create `.claude/settings.local.json` in any
+project — gitignored, and it overrides these globals for that project only.
+
+## Uninstall
+
+```bash
+cd ~/.claude-code-starter && ./uninstall.sh
+```

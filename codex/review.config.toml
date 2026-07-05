@@ -1,0 +1,12 @@
+# Codex "review" profile for the cross-review / ship-issue pipeline.
+# Install by copying to ~/.codex/review.config.toml. Invoke with:
+#   codex exec --profile review ...
+#
+# An independent, adversarial, READ-ONLY reviewer: max reasoning, never writes,
+# no interactive approval prompts. Enforces the pipeline's one-writer rule at
+# the config layer. (cross-review also passes --sandbox read-only explicitly,
+# so it stays safe even without this profile.)
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "never"
+sandbox_mode = "read-only"

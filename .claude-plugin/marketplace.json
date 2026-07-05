@@ -1,0 +1,43 @@
+{
+  "name": "claude-code-config",
+  "owner": {
+    "name": "Claude Code Config"
+  },
+  "plugins": [
+    {
+      "name": "audit-context",
+      "source": "./skills/tob-audit-context",
+      "description": "Trail of Bits audit-context toolkit: line-by-line architectural context building for security audits (audit-context-building skill, function-analyzer agent, /audit-context command)."
+    },
+    {
+      "name": "differential-review",
+      "source": "./skills/tob-differential-review",
+      "description": "Trail of Bits differential review: security-focused review of recent changes/diffs (differential-review skill, /diff-review command)."
+    },
+    {
+      "name": "insecure-defaults",
+      "source": "./skills/tob-insecure-defaults",
+      "description": "Trail of Bits insecure-defaults detection: find dangerous default configurations and settings."
+    },
+    {
+      "name": "sharp-edges",
+      "source": "./skills/tob-sharp-edges",
+      "description": "Trail of Bits sharp-edges analysis: find API footguns and error-prone constructs."
+    },
+    {
+      "name": "static-analysis",
+      "source": "./skills/tob-static-analysis",
+      "description": "Trail of Bits static analysis toolkit: Semgrep and CodeQL scanning plus SARIF parsing (semgrep, codeql, sarif-parsing skills; semgrep-scanner agent)."
+    },
+    {
+      "name": "supply-chain",
+      "source": "./skills/tob-supply-chain",
+      "description": "Trail of Bits supply-chain risk auditing: dependency and third-party package risk analysis."
+    },
+    {
+      "name": "variant-analysis",
+      "source": "./skills/tob-variant-analysis",
+      "description": "Trail of Bits variant analysis: find variants of known vulnerabilities across a codebase (/variants command)."
+    }
+  ]
+}

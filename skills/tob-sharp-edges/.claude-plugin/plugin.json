@@ -1,0 +1,5 @@
+{
+  "name": "sharp-edges",
+  "description": "Trail of Bits sharp-edges analysis: find API footguns and error-prone constructs.",
+  "version": "1.0.0"
+}

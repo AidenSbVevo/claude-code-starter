@@ -1,0 +1,5 @@
+{
+  "name": "static-analysis",
+  "description": "Trail of Bits static analysis toolkit: Semgrep and CodeQL scanning plus SARIF parsing (semgrep, codeql, sarif-parsing skills; semgrep-scanner agent).",
+  "version": "1.0.0"
+}
