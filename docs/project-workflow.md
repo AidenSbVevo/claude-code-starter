@@ -4,7 +4,7 @@
 
 ## Why this exists
 
-Software is built by more than one person, and increasingly by more than one
+A project is built by more than one person, and increasingly by more than one
 *kind* of contributor: engineers and the AI agents they drive. For that to work,
 everyone needs a shared, durable record of what the project is, what's been
 decided, what's in flight, and who owns what. We keep that record in **Linear**.
