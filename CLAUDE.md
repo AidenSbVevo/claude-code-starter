@@ -45,12 +45,16 @@ over explanations of the basics.
 <!-- dev-pipeline:start -->
 ## Dev pipeline (personal)
 
-Three personal skills implement my standard development flow — prefer them
+Four personal skills implement my standard development flow — prefer them
 over ad-hoc approaches when they match:
 
 - **epic-planning** — goal/epic → one-PR-sized Linear issues, each with
   acceptance criteria and verification commands. Trigger: scoping, breaking
   down, or creating issues for an epic or feature area.
+- **execute-epic** — drives an epic's issues through ship-issue runs, with
+  Linear as the source of truth (next unblocked issue → ship-issue → record
+  disposition). Trigger: executing, running, or working through an epic's
+  issues end-to-end.
 - **ship-issue** — Linear issue → shipped PR. Two hard gates (plan, ship),
   decorrelated reviews, mandatory retro. Trigger: starting / implementing /
   working / shipping a Linear issue.
@@ -73,6 +77,22 @@ Standing conventions (a repo `CLAUDE.md` overrides these where it speaks):
   with" footers).
 - **Python:** use `uv` for dependency management.
 - **Scratch dirs:** `.plans/` and `.review/` are never committed.
+- **Superpowers interop:** brainstorming, writing-plans, and
+  subagent-driven-development run as scoped subroutines of my skills, never as
+  the pipeline. Standing preferences: specs → `docs/specs/`, committed on the
+  work branch (never main); plans → `.plans/`, writing-plans *format* but never
+  committed. brainstorming stops after user spec review — never continue into
+  writing-plans uninvited. Never invoke finishing-a-development-branch —
+  ship-issue's SHIP GATE + ship phase own integration. Worktrees: yes to
+  isolation when offered, branch named per ship-issue's `<handle>/<issue-id>`
+  convention. Inside ship-issue, brainstorming fires only at Phase 2's
+  open-ended branch — an issue with acceptance criteria from epic-planning
+  already had its design phase; do not re-brainstorm it.
+- **Debugging:** any bug or unexpected behavior → `superpowers:systematic-debugging`
+  first; root cause before any fix. Then linear-issues to file it, and
+  ship-issue (anchorless mode when there's no ticket) to fix it.
+- **Rule home:** this global CLAUDE.md is the single home for standing rules
+  promoted by ship-issue retros — skills reference it rather than restating it.
 - **Infra:** never delete or provision infrastructure yourself — specify
   what's needed and ask me.
 <!-- dev-pipeline:end -->

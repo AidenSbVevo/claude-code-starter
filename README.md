@@ -41,16 +41,23 @@ git clone https://github.com/AidenSbVevo/claude-code-starter.git ~/.claude-code-
 cd ~/.claude-code-starter && ./install.sh
 ```
 
-The pipeline **degrades gracefully** without Codex — cross-review self-skips and
-says so — so step 2 is optional if you don't use the Linear-driven flow.
+The pipeline **degrades gracefully** without Codex — cross-review falls back to
+a Claude-side adversarial pass (a mandatory independent reviewer; decorrelation
+is lost, review is not) and flags the substitution at the next gate — so step 2
+is optional if you don't use the Linear-driven flow.
 
 ## What's Included
 
 ### `settings.json` — permissions, hooks, plugins
-Full tool permissions (Bash/Read/Write/Edit/Glob/Grep/WebFetch/WebSearch/Task),
-the MCP allow-list this config relies on (Linear, Google Drive), `xhigh` effort,
-and the SessionStart/guardrail hooks below. It is **fully portable** — no
-machine-absolute paths, so the same tracked file works on every machine.
+Full tool permissions (Bash/Read/Write/Edit/Glob/Grep/WebFetch/WebSearch/Task)
+with a **deny list guarding the credential surface** (`.env*`, `~/.ssh`,
+`~/.aws`, `sudo`), the MCP allow-list this config relies on (Linear and Google
+Drive reads promptless; Drive writes and Linear project/milestone writes
+prompt-on-use so skill-level approval gates hold), `xhigh` effort, and the
+SessionStart/guardrail hooks below. It is **fully portable** — no
+machine-absolute paths and no machine-taste keys (model, theme, tui, voice,
+push-notifications live in `settings.local.json`, seeded by `install.sh`
+without overwriting), so the same tracked file works on every machine.
 
 The two values that *must* differ per machine — the plugin-marketplace path (the
 location of this clone) and the `~/.claude` access grant — are written by
@@ -61,30 +68,43 @@ because `settings.json` does not expand `$HOME`/`~`
 Add any further machine-local overrides to that same (gitignored) file.
 
 ### `hooks/` — deterministic guardrails
-Four small, safe-by-default hook scripts (symlinked to `~/.claude/hooks/`):
+Six small, safe-by-default hook scripts (symlinked to `~/.claude/hooks/`):
 
-- **`attribution-veto.sh`** (PreToolUse: Bash) — the only blocking hook: denies
-  `git commit` / `gh pr create` whose text carries AI attribution
-  (Co-Authored-By, "Generated with", 🤖). Enforces the no-attribution rule
+- **`attribution-veto.sh`** (PreToolUse: Bash, blocking) — denies `git commit`
+  / `gh pr create` whose text carries AI attribution (Co-Authored-By,
+  "Generated with", 🤖) — including inside files passed via
+  `-F`/`--file`/`--body-file`/`--template`. Enforces the no-attribution rule
   deterministically.
-- **`scratch-guard.sh`** (PreToolUse: Bash) — warns (never blocks) when a
-  `git add` would stage `.plans/` or `.review/`; keeps both in
-  `.git/info/exclude`.
+- **`gate-guard.sh`** (PreToolUse: Bash, blocking) — on a branch with an
+  active ship-issue plan (`.plans/<issue-id>.md`), denies `git push` /
+  `gh pr create` until `.plans/<issue-id>.approved` exists — the SHIP GATE as
+  a mechanism, not prose. Inert outside a ship-issue run.
+- **`scratch-guard.sh`** (PreToolUse: Bash) — asks for confirmation (via hook
+  JSON the model actually sees) when a `git add` would stage `.plans/` or
+  `.review/`; honors `git -C`; keeps both dirs in `.git/info/exclude`.
 - **`format-fast-check.sh`** (PostToolUse: Edit/Write) — runs the repo's own
-  formatter (ruff/black/prettier/rustfmt/gofmt) on the edited file only, plus a
-  fast lint; warn-only, never blocks, never imposes a formatter the repo
+  formatter (ruff/black/prettier/rustfmt/gofmt) on the edited file only, plus
+  a fast lint; real lint findings are fed back to Claude (exit 2 — the edit
+  stands, the findings land in context); never imposes a formatter the repo
   doesn't configure.
 - **`session-context.sh`** (SessionStart) — injects branch, behind-count vs
-  freshly-fetched `origin/main` (fetch capped at ~5s), and dirty-file count —
-  the fresh-base signal ship-issue checks in Phase 0.
+  freshly-fetched `origin/main` (fetch capped at ~5s, startup only — skipped
+  on resume//clear), and dirty-file count — the fresh-base signal ship-issue
+  checks in Phase 0. Also installs the `.plans/`/`.review/` excludes.
+- **`retro-nag.sh`** (Stop) — when a shipped issue (`.approved` marker
+  present) has no `RETRO <issue>` line in `.review/journal.md`, blocks the
+  stop **once** with a reminder, then stays silent.
 
-Every script exits 0 on any error, missing tool, or unexpected input — except
-the attribution veto, whose entire point is the block.
+Every script exits 0 on any error, missing tool, or unexpected input — the
+only deliberate blocks are the attribution veto, the ship gate, the one-time
+retro reminder, and lint findings surfaced to the model.
 
 ### `CLAUDE.md` — global context
 Loaded into every session: working environment, code standards, interaction
 preferences, and the **dev-pipeline conventions** block (one-writer rule, hard
-gates, fresh-base, no AI attribution, `uv` for Python, scratch dirs).
+gates, fresh-base, no AI attribution, `uv` for Python, scratch dirs,
+superpowers interop, the debugging route) — the single home for standing rules
+promoted by ship-issue retros.
 
 ## Skill Library
 
@@ -103,13 +123,24 @@ The disciplined Linear-issue → PR flow — design and Codex setup in
   files them only after explicit approval.
   *"scope out the auth epic"*, *"break this into tickets"*
 - **`ship-issue`** — drives a Linear issue end-to-end to a shipped PR:
-  plan + decorrelated review, hard **plan gate**, TDD implementation, diff
-  review, hard **ship gate**, PR, Linear update, mandatory retro. Prefer it
-  over ad-hoc implementation whenever a Linear issue ID is the starting point.
+  plan + decorrelated review, hard **plan gate**, TDD (or
+  subagent-driven-development for large plans), diff review, a dedicated
+  **test-quality review**, hard **ship gate** (machine-enforced by
+  `gate-guard.sh`), PR follow-through, Linear update, mandatory retro. Also
+  runs **anchorless** from a spec path or plain description — same gates, no
+  Linear bookends. Prefer it over ad-hoc implementation whenever a Linear
+  issue ID is the starting point.
   *"start ABC-123"*, *"take ABC-42 to a PR"*
+- **`execute-epic`** — the sequencer between epic-planning and ship-issue:
+  re-derives epic state from Linear each session, picks the next unblocked
+  issue in dependency order, drives it through ship-issue (its gates fire
+  unchanged), records dispositions, rolls up the epic at the end.
+  *"run the epic"*, *"next issue in the epic"*, *"continue the epic"*
 - **`cross-review`** — decorrelated second opinion from local Codex (read-only
-  `codex exec`) on a plan or a diff; findings triaged FIX / REBUT / ESCALATE
-  with one bounded verification pass. Invoked automatically at ship-issue's
+  `codex exec --profile review`) on a plan or a diff; findings triaged
+  FIX / REBUT / ESCALATE with one bounded verification pass (discovery-only
+  variant for pre-code artifacts). Falls back to a Claude adversarial pass
+  when Codex is unavailable. Invoked automatically at ship-issue's
   checkpoints, or standalone.
   *"cross-review this diff"*, *"get a second opinion"*, *"ask codex"*
 
@@ -212,8 +243,8 @@ local marketplace, not as personal skills — see
 
 ## The Dev Pipeline
 
-`epic-planning` → `ship-issue` → `cross-review` (described in the
-[Skill Library](#skill-library) above) implement a disciplined
+`epic-planning` → `execute-epic` → `ship-issue` → `cross-review` (described in
+the [Skill Library](#skill-library) above) implement a disciplined
 Linear-issue → PR flow built on three ideas. See
 [`docs/project-workflow.md`](docs/project-workflow.md) for how Linear projects,
 epics, and issues structure the work — and why we size each issue to one session
@@ -230,12 +261,23 @@ and one PR.
   surviving disagreements escalate to the human at a gate. A mandatory retro
   turns recurring findings into config diffs.
 
+The pipeline treats the superpowers plugin's planning skills as **scoped
+subroutines, never the pipeline**: brainstorming produces the spec
+(`docs/specs/`, committed on the work branch) and returns control;
+writing-plans contributes its task *format* (plans stay scratch in `.plans/`);
+subagent-driven-development is the execution engine for large plans — while
+the gates, cross-review, and retro always remain ship-issue's. The standing
+rules live in `CLAUDE.md`'s dev-pipeline block.
+
 **Codex setup:** the recommended Codex configuration lives in the
 [`codex/`](codex/) directory — `config.reference.toml` (global model/reasoning
 to merge into `~/.codex/config.toml`) and `review.config.toml` (the read-only,
 no-approvals, max-reasoning `review` profile — copy to
-`~/.codex/review.config.toml`). The profile enforces the one-writer rule at the
-config layer; invoke it with `codex exec --profile review`.
+`~/.codex/review.config.toml`, which is where current Codex CLI reads
+standalone profiles). cross-review invokes it with
+`codex exec --profile review` and additionally hardcodes `--sandbox read-only`
+per command — the one-writer rule is enforced belt-and-suspenders, not by the
+profile alone.
 
 ## How It Works
 
@@ -260,7 +302,7 @@ claude-code-starter/
 ├── codex/
 │   └── config.reference.toml   # recommended Codex CLI setup for the pipeline
 └── skills/                 # ambient knowledge (auto-invoked)
-    ├── epic-planning/ ship-issue/ cross-review/
+    ├── epic-planning/ execute-epic/ ship-issue/ cross-review/
     ├── ml-engineer/ software-dev/ frontend-engineer/ ui-designer/ viz/
     ├── linear-issues/ handoff/
     ├── security-audit/ tob-*/          # tob-* install as plugins, not skills

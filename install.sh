@@ -85,27 +85,52 @@ if compgen -G "$SCRIPT_DIR/agents/*.md" > /dev/null; then
 fi
 
 # --- Per-machine settings (settings.local.json) --------------------------------
-# settings.json is the tracked, portable, canonical config. Two values can't live
-# there because they are machine-absolute and settings.json does NOT expand
-# $HOME/~ (env-var expansion is unsupported — anthropics/claude-code#4276):
-#   • the plugin-marketplace path — wherever THIS clone lives ($SCRIPT_DIR)
-#   • the home-dir access grant   — this machine's ~/.claude ($CLAUDE_DIR)
-# We write them here, deep-merging into any existing local settings so the
-# harness-managed permission allow-list is preserved. Idempotent on re-run.
+# settings.json is the tracked, portable, canonical config. Two kinds of values
+# can't live there:
+#   • machine-absolute paths (settings.json does NOT expand $HOME/~ — env-var
+#     expansion is unsupported, anthropics/claude-code#4276):
+#       - the plugin-marketplace path — wherever THIS clone lives ($SCRIPT_DIR)
+#       - the home-dir access grant   — this machine's ~/.claude ($CLAUDE_DIR)
+#   • machine taste — model/theme/tui/voiceEnabled/agentPushNotifEnabled are
+#     seeded with defaults ONLY where the key is absent; an existing local
+#     value always wins.
+# The merge is a real deep merge: objects merge recursively and ARRAYS UNION
+# (jq: concat + unique; python: extend + dedupe preserving order) — a re-run
+# never clobbers user additions such as extra additionalDirectories entries.
+# Idempotent on re-run.
 echo "🔧 Writing per-machine settings.local.json..."
 LOCAL_SETTINGS="$CLAUDE_DIR/settings.local.json"
 write_local_settings() {
     if command -v jq > /dev/null 2>&1; then
-        local fragment tmp
+        local fragment tmp existing
         fragment="$(jq -n --arg mp "$SCRIPT_DIR" --arg home "$CLAUDE_DIR" '{
             permissions: { additionalDirectories: [$home] },
             extraKnownMarketplaces: { "claude-code-config": { source: { source: "directory", path: $mp } } }
         }')"
+        existing='{}'
         if [ -f "$LOCAL_SETTINGS" ]; then
-            tmp="$(mktemp)"
-            jq -s '.[0] * .[1]' "$LOCAL_SETTINGS" <(printf '%s' "$fragment") > "$tmp" && mv "$tmp" "$LOCAL_SETTINGS"
+            existing="$(cat "$LOCAL_SETTINGS")"
+        fi
+        tmp="$(mktemp)"
+        if jq -n --argjson a "$existing" --argjson b "$fragment" '
+            def deepmerge(x; y):
+                if (x | type) == "object" and (y | type) == "object" then
+                    reduce (y | keys_unsorted[]) as $k (x; .[$k] = deepmerge(x[$k]; y[$k]))
+                elif (x | type) == "array" and (y | type) == "array" then
+                    (x + y) | unique
+                else y end;
+            def seed($k; $v): if has($k) then . else . + {($k): $v} end;
+            deepmerge($a; $b)
+            | seed("model"; "opus[1m]")
+            | seed("theme"; "dark")
+            | seed("tui"; "fullscreen")
+            | seed("voiceEnabled"; true)
+            | seed("agentPushNotifEnabled"; true)
+        ' > "$tmp" 2> /dev/null; then
+            mv "$tmp" "$LOCAL_SETTINGS"
         else
-            printf '%s\n' "$fragment" > "$LOCAL_SETTINGS"
+            rm -f "$tmp"
+            echo "  ⚠ $LOCAL_SETTINGS is not valid JSON — left untouched. Fix it and re-run." >&2
         fi
         return 0
     fi
@@ -130,10 +155,24 @@ def deep_merge(a, b):
     for k, v in b.items():
         if isinstance(v, dict) and isinstance(a.get(k), dict):
             deep_merge(a[k], v)
+        elif isinstance(v, list) and isinstance(a.get(k), list):
+            # Arrays union: extend + dedupe, preserving existing order.
+            for item in v:
+                if item not in a[k]:
+                    a[k].append(item)
         else:
             a[k] = v
     return a
 deep_merge(data, frag)
+taste = {
+    "model": "opus[1m]",
+    "theme": "dark",
+    "tui": "fullscreen",
+    "voiceEnabled": True,
+    "agentPushNotifEnabled": True,
+}
+for k, v in taste.items():
+    data.setdefault(k, v)
 with open(local, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
@@ -145,7 +184,7 @@ PY
     return 0
 }
 write_local_settings
-echo "  ✓ Wrote: $LOCAL_SETTINGS (marketplace path + home-dir access)"
+echo "  ✓ Wrote: $LOCAL_SETTINGS (marketplace path + home-dir access + taste-key seeds)"
 
 echo ""
 echo "════════════════════════════════════════════════"

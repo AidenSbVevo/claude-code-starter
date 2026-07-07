@@ -29,24 +29,25 @@
       "mcp__claude_ai_Linear__get_issue",
       "mcp__claude_ai_Linear__save_issue",
       "mcp__claude_ai_Linear__get_project",
-      "mcp__claude_ai_Linear__save_project",
       "mcp__claude_ai_Linear__get_milestone",
       "mcp__claude_ai_Linear__list_milestones",
-      "mcp__claude_ai_Linear__save_milestone",
       "mcp__claude_ai_Linear__list_comments",
       "mcp__claude_ai_Linear__save_comment",
-      "mcp__claude_ai_Google_Drive__create_file",
       "mcp__claude_ai_Google_Drive__get_file_metadata",
       "mcp__claude_ai_Google_Drive__read_file_content",
       "mcp__claude_ai_Google_Drive__download_file_content",
       "mcp__claude_ai_Google_Drive__search_files",
       "mcp__claude_ai_Google_Drive__list_recent_files",
-      "mcp__claude_ai_Google_Drive__get_file_permissions",
-      "mcp__claude_ai_Google_Drive__copy_file"
+      "mcp__claude_ai_Google_Drive__get_file_permissions"
     ],
-    "deny": []
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Bash(sudo:*)"
+    ]
   },
-  "model": "opus[1m]",
   "hooks": {
     "SessionStart": [
       {
@@ -69,6 +70,10 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/scratch-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/gate-guard.sh"
           }
         ]
       }
@@ -80,6 +85,16 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/format-fast-check.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/retro-nag.sh"
           }
         ]
       }
@@ -99,9 +114,5 @@
     "variant-analysis@claude-code-config": true
   },
   "effortLevel": "xhigh",
-  "tui": "fullscreen",
-  "skipWorkflowUsageWarning": true,
-  "theme": "dark",
-  "agentPushNotifEnabled": true,
-  "voiceEnabled": true
+  "skipWorkflowUsageWarning": true
 }

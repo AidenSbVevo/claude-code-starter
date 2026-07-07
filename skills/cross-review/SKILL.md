@@ -19,6 +19,11 @@ as many times as it takes), **boundedly against critics** (models). Hard caps:
 - **1 verification pass** (resumed session, scoped to the fixes)
 - **at most 1 targeted exchange** per contested finding
 
+**Sanctioned variant:** callers may request **discovery-only** for pre-code
+artifacts (epic decompositions, specs) — findings feed the caller's own
+revision loop, so there is no fix-set to verify. The verification pass remains
+mandatory for diffs.
+
 Convergence between two critics measures exhaustion, not correctness.
 Disagreement that survives a fix attempt is the *signal* — it goes to the user,
 never into another autonomous round.
@@ -26,9 +31,9 @@ never into another autonomous round.
 ## Preconditions
 
 1. `codex login status` must exit 0. If Codex is missing or unauthenticated:
-   tell the user the fix (`codex login`), then continue the surrounding
-   pipeline **without** cross-review, saying so explicitly in the gate summary.
-   Never silently skip.
+   tell the user the fix (`codex login`), then run the fallback ladder (see
+   Failure handling) so the review still happens — the gate summary says which
+   reviewer ran. Never silently skip.
 2. Ensure `.review/` exists and is ignored. If `.review/` is not covered by
    `.gitignore`, append it to `.git/info/exclude` (repo-local, uncommitted).
    `.review/` contents are scratch and must never be committed.
@@ -41,7 +46,7 @@ never into another autonomous round.
 
 **plan** — reviewing a plan / spec / epic decomposition before code exists.
 Packet: the plan text + the file:line pointers it rests on + the issue's
-acceptance criteria. Rubric:
+acceptance criteria + the governing spec section, when one exists. Rubric:
 - requirements the plan misses or only partially satisfies
 - ambiguity an implementer could resolve two different ways
 - wrong assumptions about the codebase (verify against the actual files)
@@ -113,10 +118,16 @@ still valid; the reviewer emits every other field per the rubric.
 
 ```bash
 cat .review/prompt.md | codex exec - \
+  --profile review \
   --sandbox read-only \
   --output-schema .review/findings.schema.json \
   --output-last-message .review/findings.json
 ```
+
+The `review` profile lives at `~/.codex/review.config.toml` — a standalone
+profile file, the working mechanism on current Codex CLI; do NOT merge it into
+`config.toml`, where `[profiles.x]` is a legacy error. `--sandbox read-only`
+stays explicit alongside it — belt and suspenders.
 
 Progress streams to stderr; the final JSON lands in `.review/findings.json`.
 Sessions persist by default — do **not** pass `--ephemeral` (the verification
@@ -142,7 +153,7 @@ Tests, types, lint back to green. This is the verifier loop — iterate freely.
 ### 6. Verification pass (the one bounded model round)
 
 ```bash
-codex exec resume --last --sandbox read-only \
+codex exec resume --last --profile review --sandbox read-only \
   "Fixes applied for findings [F1, F3, ...]: <one line each: what changed,
   where>. Confirm each fix resolves its finding, and inspect ONLY the new
   code these fixes introduced for defects. Do not re-review anything else.
@@ -176,8 +187,19 @@ is the evidence that argues the loop caps up or down over time.
 
 ## Failure handling
 
+- **Codex unavailable** (missing, unauthenticated, or a call fails and won't
+  retry): substitute down the fallback ladder — never proceed reviewless.
+  - **diff mode** → `/code-review` at `high` effort (`ultra` for full-pipeline
+    tickets), triaged the same way.
+  - **plan mode** → a fresh-context adversarial Claude subagent given ONLY the
+    packet — never the implementer's reasoning (the contamination rule that
+    protects Codex's independence is the only independence a same-model
+    reviewer has).
+
+  Decorrelation is lost; adversarial review is not. The gate summary says
+  which reviewer actually ran.
 - Codex call fails mid-run (network, auth expiry): report it, present whatever
-  triage is complete, continue the pipeline without the missing pass — flagged
-  loudly at the next gate.
+  triage is complete, run the fallback for the missing pass — flagged loudly
+  at the next gate.
 - Codex returns zero findings on a large diff: treat with mild suspicion, note
   it in the journal, proceed. An empty review is data, not absolution.

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Bash): warn — never block — when a git add would stage
-# .plans/ or .review/ scratch artifacts, either explicitly or via a blind
-# `git add -A` / `git add .` while those dirs have changes. Exit 1 is the
-# non-blocking "show a warning, let it proceed" path; every other outcome
-# (including all errors) is exit 0. Also keeps both dirs in the repo's
-# .git/info/exclude, idempotently, so they normally can't be staged at all.
+# PreToolUse hook (Bash): when a git add would stage .plans/ or .review/
+# scratch artifacts, either explicitly or via a blind `git add -A` /
+# `git add .` while those dirs have changes, emit the PreToolUse JSON "ask"
+# decision (exit 0) so the user confirms — the old exit-1 stderr warning was
+# invisible to the model. Honors `git -C <dir>` so the repo the add actually
+# targets gets both the exclude write and the status check. Every other
+# outcome (including all errors) is exit 0 with no output. Also keeps both
+# dirs in the repo's .git/info/exclude, idempotently, so they normally can't
+# be staged at all (session-context.sh installs the same excludes at
+# SessionStart; this is the backstop for repos entered mid-session).
 set -u
 
 payload=$(cat 2>/dev/null || true)
@@ -21,7 +25,16 @@ fi
 # Only care about git add commands.
 printf '%s' "$cmd" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?add([[:space:]]|$)' || exit 0
 
+# Resolve the repo the add targets: `git -C <dir>` wins, else project dir.
 cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
+cdir=$(printf '%s' "$cmd" | sed -nE 's/.*(^|[;&|[:space:]])git[[:space:]]+-C[[:space:]]*([^[:space:]]+).*/\2/p' | head -1) || cdir=""
+if [ -n "$cdir" ]; then
+  cdir=${cdir#\"}; cdir=${cdir%\"}; cdir=${cdir#\'}; cdir=${cdir%\'}
+  case "$cdir" in
+    /*) cwd="$cdir" ;;
+    *) cwd="$cwd/$cdir" ;;
+  esac
+fi
 git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 # Best-effort: make sure the scratch dirs are excluded from tracking.
@@ -45,7 +58,13 @@ elif printf '%s' "$cmd" | grep -qE 'add[[:space:]]+(-A|--all|-a[[:space:]]|\.([[
 fi
 
 if [ -n "$warnmsg" ]; then
-  echo "[scratch-guard] $warnmsg — scratch dirs are never committed (standing rule). They are in .git/info/exclude; if staged, unstage with: git reset -- .plans .review" >&2
-  exit 1
+  reason="[scratch-guard] $warnmsg — scratch dirs are never committed (standing rule). They are in .git/info/exclude; if staged, unstage with: git reset -- .plans .review"
+  if command -v jq >/dev/null 2>&1; then
+    jq -cn --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}' 2>/dev/null \
+      || printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$reason"
+  else
+    # $reason is built only from fixed strings above — safe to inline in JSON.
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$reason"
+  fi
 fi
 exit 0

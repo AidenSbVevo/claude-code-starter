@@ -36,11 +36,16 @@ to merged PR in a single focused session and be reviewed as one coherent diff.
 If a piece of work can't fit that shape, it's not an issue — it's an epic, and it
 gets broken down further. Sizing to one-session-one-PR keeps diffs reviewable,
 keeps context windows sane, and makes progress legible: every merged PR closes
-exactly one issue.
+exactly one issue. (The session budget includes ship-issue's own review
+ceremony — plan review, gates, diff and test-quality reviews, retro — so plan
+for roughly half a window of actual implementation per issue.)
 
 The **`epic-planning`** skill does the breakdown — it turns a goal or feature
 area into one-PR-sized issues, each with acceptance criteria and verification
-commands, before any code is written.
+commands, before any code is written. The **`execute-epic`** skill then drives
+the epic: it reads the epic's state from Linear each session, picks the next
+unblocked issue in dependency order, and runs it through `ship-issue` — so a
+multi-issue epic has an owner between "issues created" and "all PRs merged".
 
 ## Structured issue bodies
 
@@ -64,7 +69,8 @@ acceptance criteria, and the current state.
 
 ```
 Project  (in Linear)
-  └─ Epic ───────── epic-planning breaks it into one-PR-sized issues
+  └─ Epic ───────── epic-planning breaks it into one-PR-sized issues,
+        │           execute-epic drives them in dependency order
         ├─ Issue ── one Claude Code session → one PR  (ship-issue)
         ├─ Issue ── …
         └─ Issue ── …

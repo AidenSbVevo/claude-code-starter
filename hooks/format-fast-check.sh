@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # PostToolUse hook (Edit|MultiEdit|Write): format the edited file with the
 # repo's OWN formatter (never impose one the repo doesn't configure), then run
-# a fast lint check on that file only. Warn-only by design: every failure
-# path — missing tool, parse error, formatter crash — exits 0 so a broken
-# hook never blocks an edit. Slow suites (pytest, tsc, eslint) deliberately
-# do not run here; they belong in the dev pipeline, not on every keystroke.
+# a fast lint check on that file only. Real lint findings on the edited file
+# exit 2 so the model sees them (PostToolUse stderr only reaches Claude on
+# exit 2; the edit already landed — nothing is undone). Tool-failure paths —
+# missing tool, payload parse error, formatter or linter crash — exit 0 so a
+# broken hook never blocks an edit. Slow suites (pytest, tsc, eslint)
+# deliberately do not run here; they belong in the dev pipeline, not on every
+# keystroke.
 set -u
 
 payload=$(cat 2>/dev/null || true)
@@ -39,7 +42,17 @@ case "$file" in
     if [ "$uses_ruff" = 1 ]; then
       ruff=$(find_tool ruff) || exit 0
       "$ruff" format --quiet "$file" >/dev/null 2>&1 || warn "ruff format failed on ${file##*/}"
-      out=$("$ruff" check --quiet "$file" 2>&1) || warn "ruff check on ${file##*/}: $(printf '%s' "$out" | head -5)"
+      out=$("$ruff" check --quiet "$file" 2>&1)
+      rc=$?
+      if [ "$rc" -eq 1 ] && [ -n "$out" ]; then
+        # rc 1 = real findings — surface them to the model (exit 2).
+        printf '[format-hook] ruff findings on %s — fix before moving on:\n%s\n' \
+          "${file##*/}" "$(printf '%s' "$out" | head -40)" >&2
+        exit 2
+      elif [ "$rc" -ne 0 ]; then
+        # rc 2+ = ruff itself failed (bad config, crash) — warn, never block.
+        warn "ruff check errored on ${file##*/}: $(printf '%s' "$out" | head -5)"
+      fi
     elif [ "$uses_black" = 1 ]; then
       black=$(find_tool black) || exit 0
       "$black" --quiet "$file" >/dev/null 2>&1 || warn "black failed on ${file##*/}"
